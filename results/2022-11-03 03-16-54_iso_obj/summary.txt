@@ -1,0 +1,6 @@
+Total:
+Grasp acc=1.000 (3/3) --- Manipulation acc=1.000 (3/3) 
+
+Accuracy per object:
+Banana: Grasp acc=1.000 (1/1) --- Manipulation acc=1.000 (1/1) 
+MustardBottle: Grasp acc=1.000 (1/1) --- Manipulation acc=1.000 (1/1) 
