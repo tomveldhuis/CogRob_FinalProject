@@ -136,9 +136,14 @@ class GraspGenerator:
         confidence_threshold = 0.50
         objectBox = segmentImage(rgb, label, confidence_threshold, save_output_image=show_output) 
         #                ^ will save a png of the disected image if   ^  is True        # check if the object is found:
-        print(rgb.shape)
+        ## resize the image for the grasp network
         rgb = cv2.resize(rgb, (img_size, img_size), interpolation = cv2.INTER_AREA)
-        print(rgb.shape)
+
+        ## resize the object box
+        if objectBox != False:
+            scale_factor = self.IMG_WIDTH / 500
+            objectBox[0] = (int(objectBox[0][0] * scale_factor), int(objectBox[0][1] * scale_factor))
+            objectBox[1] = (int(objectBox[1][0] * scale_factor), int(objectBox[1][1] * scale_factor))
         
         print("objectBox:", objectBox)
         if objectBox == False:
@@ -186,13 +191,12 @@ class GraspGenerator:
             else: 
                 print ("you need to add your function here!")        
         
-
         """ MASK THE QUALITY IMAGE HERE! """
         if objectBox != False:
             # unpack box edges
             print("MASKING Q-IMAGE")
-            top_bound, left_bound, = objectBox[0]
-            bottom_bound, right_bound = objectBox[1]
+            left_bound, top_bound, = objectBox[0]
+            right_bound, bottom_bound = objectBox[1]
            
             q_img[  :top_bound,      :] = 0         # everything above the box
             q_img[bottom_bound:,      :] = 0         # everything below the box
