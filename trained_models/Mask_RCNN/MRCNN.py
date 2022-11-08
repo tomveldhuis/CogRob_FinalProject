@@ -132,7 +132,7 @@ def segmentImage(image, imgLabels, confidence_threshold=0.85, save_output_image=
     numLabels = len(boxes)
     labels = labels[:numLabels]
     
-    # see if the desired object is found
+    # gather all the boxes of the desired objects
     boxList = []
     for label in imgLabels:
         # see if the desired object is found

@@ -138,7 +138,8 @@ class GraspGenerator:
         #                ^ will save a png of the disected image if   ^  is True        # check if the object is found:
         ## resize the image for the grasp network
         rgb = cv2.resize(rgb, (img_size, img_size), interpolation = cv2.INTER_AREA)
-
+        
+        ## go through all the object boxes
         for i in range(len(objectBoxes)):
             label = objectBoxes[i][0]
             objectBox = objectBoxes[i][1]
@@ -195,9 +196,18 @@ class GraspGenerator:
             else: 
                 print ("you need to add your function here!")        
         
+        ## choose which object to grab
+        print("Which object you want to grab?")
+        counter = 1
+        for obj in objectBoxes:
+            if obj[1] != False:
+                print(str(counter) + ") " + obj[0])
+                counter += 1
+        answer = int(input("Answer: "))
+        
         """ MASK THE QUALITY IMAGE HERE! """
-        if len(objectBoxes) == 1 and objectBoxes[0][1] != False:
-            objectBox = objectBoxes[0][1]
+        if len(objectBoxes) >= 1 and objectBoxes[answer-1][1] != False:
+            objectBox = objectBoxes[answer-1][1]
             # unpack box edges
             print("MASKING Q-IMAGE")
             left_bound, top_bound, = objectBox[0]
