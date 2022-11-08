@@ -132,24 +132,28 @@ class GraspGenerator:
         
         """ MASK R CNN HERE """
         #cv2.imwrite("originalRGB.png", rgb)
-        label = 'scissors'
+        label = ['scissors', 'sports ball']
         confidence_threshold = 0.50
-        objectBox = segmentImage(rgb, label, confidence_threshold, save_output_image=show_output) 
+        objectBoxes = segmentImage(rgb, label, confidence_threshold, save_output_image=show_output) 
         #                ^ will save a png of the disected image if   ^  is True        # check if the object is found:
         ## resize the image for the grasp network
         rgb = cv2.resize(rgb, (img_size, img_size), interpolation = cv2.INTER_AREA)
 
-        ## resize the object box
-        if objectBox != False:
-            scale_factor = self.IMG_WIDTH / 500
-            objectBox[0] = (int(objectBox[0][0] * scale_factor), int(objectBox[0][1] * scale_factor))
-            objectBox[1] = (int(objectBox[1][0] * scale_factor), int(objectBox[1][1] * scale_factor))
-        
-        print("objectBox:", objectBox)
-        if objectBox == False:
-            #print("Object not found")
-            #exit()           # idk if just ending the simulation here is a good idea
-            print("Object not found! Running simulation as normal...")
+        for i in range(len(objectBoxes)):
+            label = objectBoxes[i][0]
+            objectBox = objectBoxes[i][1]
+
+            ## resize the object box
+            if objectBox != False:
+                scale_factor = self.IMG_WIDTH / 500
+                objectBox[0] = (int(objectBox[0][0] * scale_factor), int(objectBox[0][1] * scale_factor))
+                objectBox[1] = (int(objectBox[1][0] * scale_factor), int(objectBox[1][1] * scale_factor))
+                objectBoxes[i] = (label, objectBox)
+                print(label, "objectBox:", objectBox)
+            else:
+                #print("Object not found")
+                #exit()           # idk if just ending the simulation here is a good idea
+                print(label, "object not found!")
 
         # continue as normal
 
@@ -192,7 +196,8 @@ class GraspGenerator:
                 print ("you need to add your function here!")        
         
         """ MASK THE QUALITY IMAGE HERE! """
-        if objectBox != False:
+        if len(objectBoxes) == 1 and objectBoxes[0][1] != False:
+            objectBox = objectBoxes[0][1]
             # unpack box edges
             print("MASKING Q-IMAGE")
             left_bound, top_bound, = objectBox[0]

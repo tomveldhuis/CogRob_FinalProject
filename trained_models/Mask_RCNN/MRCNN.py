@@ -63,7 +63,7 @@ def get_outputs(image, model, threshold):
     boxes = [[(int(i[0]), int(i[1])), (int(i[2]), int(i[3]))]  for i in outputs[0]['boxes'].detach().cpu()]
     # discard bounding boxes below threshold value
     boxes = boxes[:thresholded_preds_count]
-    # get the classes labelss
+    # get the classes labels
     labels = [coco_names[i] for i in outputs[0]['labels']]
     return masks, boxes, labels
 
@@ -97,7 +97,7 @@ def draw_segmentation_map(image, masks, boxes, labels):
     return image
 
 
-def segmentImage(image, label, confidence_threshold=0.85, save_output_image=False):
+def segmentImage(image, imgLabels, confidence_threshold=0.85, save_output_image=False):
     # initialize the model
     model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True, progress=True, 
                                                             num_classes=91)
@@ -131,14 +131,18 @@ def segmentImage(image, label, confidence_threshold=0.85, save_output_image=Fals
     # shorten the list of labels to the number of boxes we have
     numLabels = len(boxes)
     labels = labels[:numLabels]
-
+    
     # see if the desired object is found
-    try:  
-        boxNumber = labels.index(label)
-    except: # not found
-        return False
+    boxList = []
+    for label in imgLabels:
+        # see if the desired object is found
+        try:
+            boxNumber = labels.index(label)
+            boxList.append((label, boxes[boxNumber]))
+        except: # not found
+            boxList.append((label, False))
 
-    return boxes[boxNumber] 
+    return boxList
 
 
 
