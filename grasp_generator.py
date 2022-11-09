@@ -140,6 +140,7 @@ class GraspGenerator:
         rgb = cv2.resize(rgb, (img_size, img_size), interpolation = cv2.INTER_AREA)
         
         ## go through all the object boxes
+        print(len(objectBoxes), "objects found!")
         for i in range(len(objectBoxes)):
             label = objectBoxes[i][0]
             objectBox = objectBoxes[i][1]
@@ -151,10 +152,6 @@ class GraspGenerator:
                 objectBox[1] = (int(objectBox[1][0] * scale_factor), int(objectBox[1][1] * scale_factor))
                 objectBoxes[i] = (label, objectBox)
                 print(label, "objectBox:", objectBox)
-            else:
-                #print("Object not found")
-                #exit()           # idk if just ending the simulation here is a good idea
-                print(label, "object not found!")
 
         # continue as normal
 

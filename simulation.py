@@ -208,24 +208,26 @@ class GrasppingScenarios():
         ## reporting the results at the end of experiments in the results folder
         number_of_objects = 5
         if scenario=='packed':
-            objects = YcbObjects('objects/ycb_objects',
-                            mod_orn=['ChipsCan', 'MustardBottle', 'TomatoSoupCan'],
-                            mod_stiffness=['Strawberry'],
-                            exclude=['CrackerBox'])
+            #objects = YcbObjects('objects/ycb_objects',
+                            #mod_orn=['ChipsCan', 'MustardBottle', 'TomatoSoupCan'],
+                            #mod_stiffness=['Strawberry'],
+                            #exclude=['CrackerBox'])
+            objects = YcbObjects('objects/ycb_objects')
             
             data = PackPileData(number_of_objects, runs, 'results', 'packed')
 
         elif scenario=='pile':
-            objects = YcbObjects('objects/ycb_objects',
-                            mod_orn=['ChipsCan', 'MustardBottle', 'TomatoSoupCan'],
-                            mod_stiffness=['Strawberry'],
-                            exclude=['CrackerBox'])
+            #objects = YcbObjects('objects/ycb_objects',
+                            #mod_orn=['ChipsCan', 'MustardBottle', 'TomatoSoupCan'],
+                            #mod_stiffness=['Strawberry'],
+                            #exclude=['CrackerBox'])
+            objects = YcbObjects('objects/ycb_objects')
 
             data = PackPileData(number_of_objects, runs, 'results', 'pile')
 
 
         center_x, center_y, center_z = 0.05, -0.52, self.CAM_Z
-        camera = Camera((center_x, center_y, center_z), (center_x, center_y, 0.785), 0.2, 2.0, (self.IMG_SIZE, self.IMG_SIZE), 40)
+        camera = Camera((center_x, center_y, center_z), (center_x, center_y, 0.785), 0.2, 2.0, (500, 500), 40)
         env = Environment(camera, vis=vis, debug=debug, finger_length=0.06)
         
         generator = GraspGenerator(self.network_path, camera, self.depth_radius, self.fig, self.IMG_SIZE, self.network_model, device)
@@ -249,10 +251,11 @@ class GrasppingScenarios():
 
             info = objects.get_n_first_obj_info(number_of_objects)
 
+            numObjects == 2 ## number of objects put in the environment each run, default should be 5
             if scenario=='packed':
-                env.create_packed(info)
+                env.create_packed(numObjects, info)
             elif scenario=='pile':
-                env.create_pile(info)
+                env.create_pile(numObjects, info)
                 
             #self.dummy_simulation_steps(50)
 
@@ -270,8 +273,10 @@ class GrasppingScenarios():
                         data.add_try()  
                         rgb, depth, _ = camera.get_cam_img()
                         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
-                        
-                        grasps, save_name = generator.predict_grasp( rgb, depth, n_grasps=number_of_attempts, show_output=output)
+                        ## resize depth image
+                        depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation = cv2.INTER_AREA)
+
+                        grasps, save_name = generator.predict_grasp(rgb, self.IMG_SIZE, depth, n_grasps=number_of_attempts, show_output=output)
                         if (grasps == []):
                                 self.dummy_simulation_steps(30)
                                 print ("could not find a grasp point!")    
