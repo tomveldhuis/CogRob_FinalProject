@@ -125,36 +125,55 @@ class GraspGenerator:
 
         return q_img, ang_img, width_img
 
-    def predict(self, rgb, img_size, depth, n_grasps=1, show_output=False):
+    def maskRCNN(self, desired_object, method, rgb, img_size, q_img, show_output):
+        """ MASK R CNN HERE """
+        #cv2.imwrite("originalRGB.png", rgb)
+        print('Mask R CNNing')     
+        confidence_threshold = 0.9
+        objectBox, objectMask = segmentImage(rgb, desired_object, confidence_threshold, save_output_image=show_output) 
+        
+        ## resize the image for the grasp network
+        rgb = cv2.resize(rgb, (img_size, img_size), interpolation = cv2.INTER_AREA)
+        print("objectBox", objectBox)
+        ## resize the object box
+        if objectBox != False:
+            if method == 'boundingBox':
+                # reshape box to fit the grasping network
+                scale_factor = self.IMG_WIDTH / 500
+                objectBox[0] = (int(objectBox[0][0] * scale_factor), int(objectBox[0][1] * scale_factor))
+                objectBox[1] = (int(objectBox[1][0] * scale_factor), int(objectBox[1][1] * scale_factor))
+
+                # unpack box edges
+                print("MASKING Q-IMAGE")
+                left_bound, top_bound, = objectBox[0]
+                right_bound, bottom_bound = objectBox[1]
+            
+                q_img[  :top_bound,      :] = 0         # everything above the box
+                q_img[bottom_bound:,      :] = 0         # everything below the box
+                q_img[:,             :left_bound] = 0    # left of the box
+                q_img[:,             right_bound:] = 0   # right of the box
+                return True, q_img
+
+            elif method == 'objectMask':
+                print("object mask outline not implemented yet")
+                return True, q_img
+
+        else:
+            print("object not found!")
+            return False, q_img
+
+
+
+    def predict(self, rgb, img_size, depth, n_grasps=1, show_output=False, desired_object='mustard_bottle', maskingMethod='boundingBox'):
         max_val = np.max(depth)
         depth = depth * (255 / max_val)
         depth = np.clip((depth - depth.mean())/175, -1, 1)
         
-        """ MASK R CNN HERE """
-        #cv2.imwrite("originalRGB.png", rgb)
-        label = ['scissors', 'sports ball']
-        confidence_threshold = 0.50
-        objectBoxes = segmentImage(rgb, label, confidence_threshold, save_output_image=show_output) 
-        #                ^ will save a png of the disected image if   ^  is True        # check if the object is found:
-        ## resize the image for the grasp network
+        # hold on to a copy of the 500x500 rgb image for maskRCNN later
+        # and resize the 'original' rgb image for the grasping network
+        maskRCNN_rgb = rgb 
         rgb = cv2.resize(rgb, (img_size, img_size), interpolation = cv2.INTER_AREA)
-        
-        ## go through all the object boxes
-        print(len(objectBoxes), "objects found!")
-        for i in range(len(objectBoxes)):
-            label = objectBoxes[i][0]
-            objectBox = objectBoxes[i][1]
-
-            ## resize the object box
-            if objectBox != False:
-                scale_factor = self.IMG_WIDTH / 500
-                objectBox[0] = (int(objectBox[0][0] * scale_factor), int(objectBox[0][1] * scale_factor))
-                objectBox[1] = (int(objectBox[1][0] * scale_factor), int(objectBox[1][1] * scale_factor))
-                objectBoxes[i] = (label, objectBox)
-                print(label, "objectBox:", objectBox)
-
-        # continue as normal
-
+        print('Doing grasp point detection')
         if (self.network == 'GR_ConvNet'):
             ##### GR-ConvNet #####
             depth = np.expand_dims(np.array(depth), axis=2)
@@ -175,7 +194,6 @@ class GraspGenerator:
                 ##### GR-ConvNet #####
                 pred = self.net.predict(xc)
                 pixels_max_grasp = int(self.MAX_GRASP * self.PIX_CONVERSION)
-                print(pred['pos'].shape)
                 q_img, ang_img, width_img = self.post_process_output(pred['pos'],
                                                                 pred['cos'],
                                                                 pred['sin'],
@@ -193,27 +211,16 @@ class GraspGenerator:
             else: 
                 print ("you need to add your function here!")        
         
-        ## choose which object to grab
-        print("Which object you want to grab?")
-        counter = 1
-        for obj in objectBoxes:
-            if obj[1] != False:
-                print(str(counter) + ") " + obj[0])
-                counter += 1
-        answer = int(input("Answer: "))
-        
-        """ MASK THE QUALITY IMAGE HERE! """
-        if len(objectBoxes) >= 1 and objectBoxes[answer-1][1] != False:
-            objectBox = objectBoxes[answer-1][1]
-            # unpack box edges
-            print("MASKING Q-IMAGE")
-            left_bound, top_bound, = objectBox[0]
-            right_bound, bottom_bound = objectBox[1]
-           
-            q_img[  :top_bound,      :] = 0         # everything above the box
-            q_img[bottom_bound:,      :] = 0         # everything below the box
-            q_img[:,             :left_bound] = 0    # left of the box
-            q_img[:,             right_bound:] = 0   # right of the box
+
+        """MASK R CNN IS DOING STUFF HERE"""
+        #possible_labels = ["cracker_box", "sugar_box", "tomato_soup_can",
+        #                   "mustard_bottle", "gelatin_box", "potted_meat_can"]
+        #desired_object = "mustard_bottle"
+        #method = 'boundingBox'
+
+        # give maskRCNN the object we want, the rgb image, the size of that image, the q_img from 
+        # the grasping network, as well as tell it if  we want to save the output of mask-r-cnn as an image.
+        objectFound, q_img = self.maskRCNN(desired_object, maskingMethod, maskRCNN_rgb, img_size, q_img, show_output)
 
 
         save_name = None
@@ -237,13 +244,14 @@ class GraspGenerator:
 
         print(" ")
         grasps = detect_grasps(q_img, ang_img, width_img=width_img, no_grasps=n_grasps)
-        return grasps, save_name
+        return grasps, save_name, objectFound    # the last one is a variable that is true if the object was detected
+        #return grasps, save_name
 
-    def predict_grasp(self, rgb, img_size, depth, n_grasps=1, show_output=False):
-        predictions, save_name = self.predict(rgb, img_size, depth, n_grasps=n_grasps, show_output=show_output)
+    def predict_grasp(self, rgb, img_size, depth, n_grasps=1, show_output=False, desired_object='mustard_bottle', maskingMethod='boundingBox'):
+        predictions, save_name, objectFound = self.predict(rgb, img_size, depth, n_grasps, show_output, desired_object, maskingMethod)
         grasps = []
         for grasp in predictions:
             x, y, z, roll, opening_len, obj_height = self.grasp_to_robot_frame(grasp, depth)
             grasps.append((x, y, z, roll, opening_len, obj_height))
 
-        return grasps, save_name
+        return grasps, save_name, objectFound

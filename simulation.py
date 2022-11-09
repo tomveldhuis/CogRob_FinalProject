@@ -130,7 +130,10 @@ class GrasppingScenarios():
                     ## resize depth image
                     depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation = cv2.INTER_AREA)
                               
-                    grasps, save_name = generator.predict_grasp(rgb, self.IMG_SIZE, depth, n_grasps=number_of_attempts, show_output=output)
+                    desiredObject = "mustard_bottle"
+                    maskingMethod = "boundingBox"
+                    grasps, save_name, objectFound = generator.predict_grasp(rgb, self.IMG_SIZE, depth, number_of_attempts, output, desiredObject, maskingMethod)
+                    
                     if (grasps == []):
                         self.dummy_simulation_steps(50)
                         #print ("could not find a grasp point!")
@@ -251,11 +254,11 @@ class GrasppingScenarios():
 
             info = objects.get_n_first_obj_info(number_of_objects)
 
-            numObjects == 2 ## number of objects put in the environment each run, default should be 5
+            #numObjects == 5 ## number of objects put in the environment each run, default should be 5
             if scenario=='packed':
-                env.create_packed(numObjects, info)
+                env.create_packed(5, info)
             elif scenario=='pile':
-                env.create_pile(numObjects, info)
+                env.create_pile(5, info)
                 
             #self.dummy_simulation_steps(50)
 
@@ -276,7 +279,10 @@ class GrasppingScenarios():
                         ## resize depth image
                         depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation = cv2.INTER_AREA)
 
-                        grasps, save_name = generator.predict_grasp(rgb, self.IMG_SIZE, depth, n_grasps=number_of_attempts, show_output=output)
+                        desiredObject = "mustard_bottle"
+                        maskingMethod = "boundingBox"
+                        grasps, save_name, objectFound = generator.predict_grasp(rgb, self.IMG_SIZE, depth, number_of_attempts, output, desiredObject, maskingMethod)
+                      
                         if (grasps == []):
                                 self.dummy_simulation_steps(30)
                                 print ("could not find a grasp point!")    

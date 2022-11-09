@@ -9,42 +9,41 @@ from PIL import Image
 from datetime import datetime
 from torchvision.transforms import transforms as transforms
 
-coco_names = [
-    '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-    'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
-    'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-    'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
-    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
-    'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-    'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
-    'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
-    'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
-    'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+
+
+ycb = [
+    "cracker_box", "sugar_box", "tomato_soup_can",
+    "mustard_bottle", "gelatin_box", "potted_meat_can"
 ]
-
-# Banana, MustardBottle, TennisBall, Scissors
-obj_names = [
-    '__background__', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'sports ball',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'bottle', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'banana', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A',
-    'N/A', 'N/A', 'scissors', 'N/A', 'N/A', 'N/A'
-]
+COLORS = np.random.uniform(0, 255, size=(len(ycb), 3))
 
 
-COLORS = np.random.uniform(0, 255, size=(len(coco_names), 3))
+# for loading the pretrained model
+def get_instance_segmentation_model(num_classes):
+    # load an instance segmentation model pre-trained on COCO
+    model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
+
+    # get the number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+    # now get the number of input features for the mask classifier
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256
+    # and replace the mask predictor with a new one
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
+                                                       hidden_layer,
+                                                       num_classes)
+
+    return model
+
+
 
 def get_outputs(image, model, threshold):
-    coco_names = obj_names
 
     with torch.no_grad():
         # forward pass of the image through the modle
@@ -64,7 +63,7 @@ def get_outputs(image, model, threshold):
     # discard bounding boxes below threshold value
     boxes = boxes[:thresholded_preds_count]
     # get the classes labels
-    labels = [coco_names[i] for i in outputs[0]['labels']]
+    labels = [ycb[i] for i in outputs[0]['labels']]
     return masks, boxes, labels
 
 def draw_segmentation_map(image, masks, boxes, labels):
@@ -79,7 +78,7 @@ def draw_segmentation_map(image, masks, boxes, labels):
         color = COLORS[random.randrange(0, len(COLORS))]
         red_map[masks[i] == 1], green_map[masks[i] == 1], blue_map[masks[i] == 1]  = color
         # combine all the masks into a single image
-        #segmentation_map = np.stack([red_map, green_map, blue_map], axis=2)
+        segmentation_map = np.stack([red_map, green_map, blue_map], axis=2)
         #convert the original PIL image into NumPy format
         image = np.array(image)
         # convert from RGN to OpenCV BGR format
@@ -97,14 +96,15 @@ def draw_segmentation_map(image, masks, boxes, labels):
     return image
 
 
-def segmentImage(image, imgLabels, confidence_threshold=0.85, save_output_image=False):
-    # initialize the model
-    model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True, progress=True, 
-                                                            num_classes=91)
-    # set the computation device
-    device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
-    # load the modle on to the computation device and set to eval mode
-    model.to(device).eval()
+def segmentImage(image, desired_label, confidence_threshold=0.85, save_output_image=False):
+    # initialise model
+    weights_path = "/home/cognitiverobotics/CogRob_FinalProject/trained_models/Mask_RCNN/clutter_maskrcnn_model.pt"
+    num_classes = len(ycb)+1
+    model = get_instance_segmentation_model(num_classes)
+    device = torch.device('cpu')
+    model.load_state_dict(
+        torch.load(weights_path, map_location=device))    # load weights
+    model.to(device).eval() 
 
     transform = transforms.Compose([
         transforms.ToTensor()
@@ -133,23 +133,13 @@ def segmentImage(image, imgLabels, confidence_threshold=0.85, save_output_image=
     labels = labels[:numLabels]
     
     # gather all the boxes of the desired objects
-    boxList = []
-    for label in imgLabels:
-        # see if the desired object is found
-        try:
-            boxNumber = labels.index(label)
-            boxList.append((label, boxes[boxNumber]))
-        except: # not found
-            boxList.append((label, False))
+    print(labels)
+    # see if the desired object is found
+    try:
+        boxNumber = labels.index(desired_label)
+        box = boxes[boxNumber]
+        mask = masks[boxNumber]
+    except: # not found
+        return False, False
 
-    return boxList
-
-
-
-def qImgSegmenter(orig_image, box):
-    data_address = orig_image.load()
-    for y in range(orig_image.size[1]):
-        for x in range(orig_image.size[0]):
-            if (x < box[0][0] or x > box[1][0]) or (y < box[0][1] or y > box[1][1]):
-                data_address[x, y] = (0,0,0)
-        return data_address
+    return box, mask

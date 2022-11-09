@@ -39,6 +39,7 @@ class GraspModel(nn.Module):
         }
 
     def predict(self, xc):
+        ## THIS IS BEING USED IN THE GRASP_GENERATOR FILE!!
         pos_pred, cos_pred, sin_pred, width_pred = self(xc)
         return {
             'pos': pos_pred,
