@@ -1,1 +1,1 @@
-python3 simulation.py --scenario=pile --network=GGCNN --runs=1 --save-network-output=True
+python3 simulation.py --scenario=isolated --network=GGCNN --runs=1 --attempts=3 --save-network-output=True

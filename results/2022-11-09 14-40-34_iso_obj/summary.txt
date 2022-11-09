@@ -1,0 +1,6 @@
+Total:
+Grasp acc=1.000 (4/4) --- Manipulation acc=1.000 (4/4) 
+
+Accuracy per object:
+PottedMeatCan: Grasp acc=1.000 (1/1) --- Manipulation acc=1.000 (1/1) 
+CrackerBox: Grasp acc=1.000 (1/1) --- Manipulation acc=1.000 (1/1) 

@@ -188,7 +188,9 @@ class IsolatedObjData:
         self.trials = trials
         self.succes_target = dict.fromkeys(obj_names, 0)
         self.succes_grasp = dict.fromkeys(obj_names, 0)
+        self.succes_recog = dict.fromkeys(obj_names, 0)
         self.tries = dict.fromkeys(obj_names, 0)
+        self.tries_recog = dict.fromkeys(obj_names, 0)
 
         if not os.path.exists(save_path):
             os.mkdir(save_path)
@@ -202,22 +204,14 @@ class IsolatedObjData:
     def add_succes_grasp(self, obj_name):
         self.succes_grasp[obj_name] += 1
 
+    def add_succes_recog(self, obj_name):
+        self.succes_recog[obj_name] += 1
+
     def add_try(self, obj_name):
         self.tries[obj_name] += 1
 
-    # def write_json(self):
-    #     data_tries = json.dumps(self.tries)
-    #     data_target = json.dumps(self.succes_target)
-    #     data_grasp = json.dumps(self.succes_grasp)
-    #     f = open(self.save_dir+'/data_tries.json', 'w')
-    #     f.write(data_tries)
-    #     f.close()
-    #     f = open(self.save_dir+'/data_target.json', 'w')
-    #     f.write(data_target)
-    #     f.close()
-    #     f = open(self.save_dir+'/data_grasp.json', 'w')
-    #     f.write(data_grasp)
-    #     f.close()
+    def add_try_recog(self, obj_name):
+        self.tries_recog[obj_name] += 1
 
     def write_json(self, modelname):
         data_tries = json.dumps(self.tries)
