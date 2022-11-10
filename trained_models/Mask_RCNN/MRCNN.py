@@ -28,6 +28,8 @@ ycb_original_labels = ["CrackerBox", "xx", "TomatoSoupCan",
 
 COLORS = np.random.uniform(0, 255, size=(len(ycb), 3))
 
+mask_rcnn_size = 500 # default trained value
+
 
 class MRCNN():
     # Base class for using the MASK-RCNN model
@@ -94,7 +96,10 @@ class MRCNN():
         labels = [ycb[i] for i in outputs[0]['labels']]
 
         # discard masks for objects which are below threshold
-        masks = masks[:thresholded_preds_count]
+        if len(masks) == mask_rcnn_size:
+            masks = [masks]
+        else:
+            masks = masks[:thresholded_preds_count]
 
         # discard bounding boxes below threshold value
         boxes = boxes[:thresholded_preds_count]
@@ -156,13 +161,13 @@ class MRCNN():
         labels = self.convert_labels_to_external_rep(labels)
         
         # gather all the boxes of the desired objects
-        outs = ["{}->{:.2f}".format(ll, sc) for ll, sc in zip(labels, scores)]
+        outs = ["{}->{:.3f}".format(ll, sc) for ll, sc in zip(labels, scores)]
         print("Segmented objects: ", ", ".join(outs))
 
-        box = []; mask = []
+        box = []; mask = []; score = []
         for label, ii in zip(labels, range(len(labels))):
             if label == desired_label:
-                box.append(boxes[ii]); mask.append(masks[ii])
+                box.append(boxes[ii]); mask.append(masks[ii]); score.append(scores[ii])
 
         print('Number of desired_objects found: {}'.format(len(box)))
 
@@ -178,25 +183,22 @@ class MRCNN():
                 cv2.imwrite(filename, result_img)
             #cv2.imshow('Segmented image', result) # not so great to run
 
-        return box, mask
+        return box, mask, score
 
 
 
     def predict(self, desired_object, method, rgb, q_img, img_size, img_ratio=1.0, conf_threshold=0.8, show_output=True):
         print('Predict - Mask-RCNN')     
-        objectBox, objectMask = self.segmentImage(rgb, desired_object, conf_threshold, save_output_image=show_output) 
+        objectBox, objectMask, objectScore = self.segmentImage(rgb, desired_object, conf_threshold, save_output_image=show_output) 
 
-        object_found = False
-
-        np.set_printoptions(threshold=np.inf)
+        object_found = len(objectBox)
 
         ## resize the object box
-        if len(objectBox) > 0:
-            object_found = True
+        if object_found:
 
             if method == 'boundingBox':
                 # unpack box edges
-                print("Masking Q-IMAGE by bounding box")
+                print("Masking Q-Image by bounding box")
                 left_bound, top_bound = objectBox[0][0] # TODO FILTER THE FOUND OBJECTS IN CASE THERE ARE MORE THAN 1
                 right_bound, bottom_bound = objectBox[0][1]
 
@@ -211,11 +213,11 @@ class MRCNN():
                 q_img[:,             right_bound:] = 0   # right of the box
 
             elif method == 'objectMask':
-                print("Masking Q-IMAGE BY INSTANCE SEGMENTATION")
+                print("Masking Q-Image by instance segmentation")
                 objectMask = resize(objectMask[0], (img_size, img_size))
                 q_img = q_img * objectMask   # element-wise multiplication
             else:
                 print('Method not supported')
                 exit()
 
-        return object_found, q_img
+        return object_found, objectScore, q_img

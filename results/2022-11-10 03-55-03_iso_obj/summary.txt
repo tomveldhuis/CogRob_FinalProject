@@ -1,0 +1,17 @@
+#### Configuration: 
+- case: isolated 
+- n_runs: 1 
+- n_attempts: 3 
+- n_objects: 1 
+- method: objectMask 
+- confidence_threshold: 0.70 
+#### Results: 
+Total:
+Grasp acc = -1.000 --- Manipulation acc = -1.000 --- Recog acc = 0.667 
+
+Accuracy per object:
+PottedMeatCan: Grasp acc = -1.000 --- Manipulation acc = -1.000 --- Recog acc = 1.000 
+CrackerBox: Grasp acc = -1.000 --- Manipulation acc = -1.000 --- Recog acc = 0.000 
+GelatinBox: Grasp acc = -1.000 --- Manipulation acc = -1.000 --- Recog acc = 0.000 
+TomatoSoupCan: Grasp acc = -1.000 --- Manipulation acc = -1.000 --- Recog acc = 1.000 
+MustardBottle: Grasp acc = -1.000 --- Manipulation acc = -1.000 --- Recog acc = 0.000 

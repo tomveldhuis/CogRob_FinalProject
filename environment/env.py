@@ -451,6 +451,7 @@ class Environment:
     def create_pile(self, numObjects, obj_info):
         box_ids = self.create_temp_box(0.36, 1)
         i = 0
+        object_ids = []
         for path, mod_orn, mod_stiffness in obj_info:
             if i == numObjects:
                 break
@@ -467,6 +468,9 @@ class Environment:
 
             obj_id, _, _ = self.load_obj(
                 path, pos, yaw, mod_orn, mod_stiffness)
+
+            object_ids.append(obj_id)
+
             for _ in range(10):
                 self.step_simulation()
             self.wait_until_still(obj_id, 30)
@@ -480,6 +484,9 @@ class Environment:
             p.removeBody(handle)
         self.wait_until_all_still(200)
         self.update_obj_states()
+
+        return object_ids
+
 
     def move_obj_along_axis(self, obj_id, axis, operator, step, stop):
         collison = False
@@ -519,11 +526,13 @@ class Environment:
         
         ## initialize center object
         init_x, init_y, init_z = self.obj_init_pos[0], self.obj_init_pos[1], self.Z_TABLE_TOP
+        object_ids = []
         if numObjects >= 1:
             yaw = random.uniform(0, np.pi)
             path, mod_orn, mod_stiffness = obj_info[0]
-            center_obj, _, _ = self.load_obj(
+            center_obj_id, _, _ = self.load_obj(
                 path, [init_x, init_y, init_z], yaw, mod_orn, mod_stiffness)
+            object_ids.append(center_obj_id)
         
         ## initialize side objects
         margin = 0.3
@@ -532,21 +541,28 @@ class Environment:
             path, mod_orn, mod_stiffness = obj_info[1]
             left_obj_id, _, _ = self.load_obj(
                 path, [init_x-margin, init_y, init_z], yaw, mod_orn, mod_stiffness)
+            object_ids.append(left_obj_id)
+
         if numObjects >= 3:
             yaw = random.uniform(0, np.pi)
             path, mod_orn, mod_stiffness = obj_info[2]
             top_obj_id, _, _ = self.load_obj(
                 path, [init_x, init_y+margin, init_z], yaw, mod_orn, mod_stiffness)
+            object_ids.append(top_obj_id)
+
         if numObjects >= 4:
             yaw = random.uniform(0, np.pi)
             path, mod_orn, mod_stiffness = obj_info[3]
             right_obj_id, _, _ = self.load_obj(
                 path, [init_x+margin, init_y, init_z], yaw, mod_orn, mod_stiffness)
+            object_ids.append(right_obj_id)
+
         if numObjects >= 5:
             yaw = random.uniform(0, np.pi)
             path, mod_orn, mod_stiffness = obj_info[4]
             down_obj_id, _, _ = self.load_obj(
                 path, [init_x, init_y-margin, init_z], yaw, mod_orn, mod_stiffness)
+            object_ids.append(down_obj_id)
         
         ## move all side objects towards center object
         self.wait_until_all_still()
@@ -560,6 +576,8 @@ class Environment:
         if numObjects >= 5:
             self.move_obj_along_axis(down_obj_id, 1, '+', step, init_y)
         self.update_obj_states()
+
+        return object_ids
 
 
     def move_ee(self, action, max_step=300, check_collision_config=None, custom_velocity=None,
@@ -661,7 +679,7 @@ class Environment:
             succes_grasp = True
             grasped_obj_id = grasped_id[0]
         else:
-            return succes_target, succes_grasp
+            return succes_target, succes_grasp, grasped_obj_id
 
         # Move object to target zone
         y_drop = self.TARGET_ZONE_POS[2] + z_offset + obj_height + 0.15
@@ -684,9 +702,7 @@ class Environment:
             succes_target = True
             #self.remove_obj(grasped_obj_id)
 
-        
-
-        return succes_grasp, succes_target
+        return succes_grasp, succes_target, grasped_obj_id
 
     def close(self):
         p.disconnect(self.physicsClient)

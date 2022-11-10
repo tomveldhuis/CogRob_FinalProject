@@ -11,6 +11,8 @@ import cv2
 import math
 import matplotlib.pyplot as plt
 import time
+from trained_models.Mask_RCNN.MRCNN import mask_rcnn_size
+import json
 
 
 
@@ -81,7 +83,7 @@ class GrasppingScenarios():
             return True
                     
                     
-    def isolated_obj_scenario(self, runs, attempts, n_objects, method, confidence_threshold, device, vis, output, debug):
+    def isolated_obj_scenario(self, runs, attempts_grasp, method, confidence_threshold, device, vis, output, debug):
 
         objects = YcbObjects('objects/ycb_objects')
         
@@ -92,7 +94,7 @@ class GrasppingScenarios():
         center_x, center_y, center_z = 0.05, -0.52, self.CAM_Z
 
         ## camera should be size=500 for mask-rcnn
-        camera = Camera((center_x, center_y, center_z), (center_x, center_y, 0.785), 0.2, 2.0, (500, 500), 40)
+        camera = Camera((center_x, center_y, center_z), (center_x, center_y, 0.785), 0.2, 2.0, (mask_rcnn_size, mask_rcnn_size), 40)
         env = Environment(camera, vis=vis, debug=debug, finger_length=0.06)
         
         generator = GraspGenerator(self.network_path, camera, self.depth_radius, self.fig, self.IMG_SIZE, self.network_model, device)
@@ -103,12 +105,13 @@ class GrasppingScenarios():
             print("----------- run ", i + 1, " -----------")
             print ("network model = ", self.network_model)
             print ("size of input image (W, H) = (", self.IMG_SIZE," ," ,self.IMG_SIZE, ")")
-            print("number of objects per scenario: ", n_objects)
+            print("number of grasp attents: ", attempts_grasp)
             print("method: ", method)
             print("confidence threshold: {:.2f}".format(confidence_threshold))
 
             for obj_name in objects.obj_names:
-                print("Scenario object: ", obj_name)
+                print(" ")
+                print("# Scenario object: ", obj_name)
 
                 env.reset_robot()          
                 env.remove_all_obj()                        
@@ -118,11 +121,10 @@ class GrasppingScenarios():
                 env.load_isolated_obj(path, mod_orn, mod_stiffness)
                 self.dummy_simulation_steps(20)
 
-                number_of_attempts = attempts
-                number_of_failures = 0
+                number_of_failure_grasp = 0
                 idx = 0 ## select the best grasp configuration
 
-                while self.is_there_any_object(camera) and number_of_failures < number_of_attempts:     
+                while self.is_there_any_object(camera) and (number_of_failure_grasp < attempts_grasp):     
                     
                     bgr, depth, _ = camera.get_cam_img()
 
@@ -133,21 +135,23 @@ class GrasppingScenarios():
                     ## resize depth image
                     depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation = cv2.INTER_AREA)
 
-                    grasps, save_name, objectFound = generator.predict_grasp(rgb, self.IMG_SIZE, depth, number_of_attempts, output, 
+                    data.add_try_recog(obj_name)
+
+                    grasps, save_name, objectFound, objectScore = generator.predict_grasp(rgb, self.IMG_SIZE, depth, attempts_grasp, output, 
                         obj_name, method, confidence_threshold)
 
-                    data.add_try_recog(obj_name)
-                    if objectFound: data.add_succes_recog(obj_name)
+                    if objectFound: 
+                        data.add_succes_recog(obj_name)
                     else:
                         # if object is not found, don't even try
-                        self.dummy_simulation_steps(20)
+                        self.dummy_simulation_steps(10)
                         print(' Skipping object... \r\n')
                         break
 
                     # first tries with the best config, if it fails tries the next one
                     if len(grasps) == 0:
-                        print('Grasp not found')
-                        number_of_failures += 1 # grasp not found
+                        number_of_failure_grasp += 1 # grasp not found
+                        print('Grasp not found. Number of errors: ', number_of_failure_grasp)
                         continue
                     else:
                         if (idx > len(grasps) - 1):  
@@ -164,13 +168,19 @@ class GrasppingScenarios():
                     lineIDs = self.draw_predicted_grasp(grasps[idx])
 
                     x, y, z, yaw, opening_len, obj_height = grasps[idx]
-                    succes_grasp, succes_target = env.grasp((x, y, z), yaw, opening_len, obj_height)
+                    succes_grasp, succes_target, object_grasp_id = env.grasp((x, y, z), yaw, opening_len, obj_height)
 
                     data.add_try(obj_name)
                    
-                    if succes_grasp: data.add_succes_grasp(obj_name)
+                    if succes_grasp: 
+                        data.add_succes_grasp(obj_name)
+                    else:
+                        number_of_failure_grasp += 1 # grasp not found
+                        print('Grasp not found. Number of errors: ', number_of_failure_grasp)
+                        continue
 
-                    if succes_target: data.add_succes_target(obj_name)
+                    if succes_target: 
+                        data.add_succes_target(obj_name)
 
                     ## remove visualized grasp configuration 
                     if vis: self.remove_drawing(lineIDs)
@@ -179,7 +189,6 @@ class GrasppingScenarios():
                     
                     if succes_target:
                         # resets the counter
-                        number_of_failures = 0
                         if vis:
                             debugID = p.addUserDebugText("success", [-0.0, -0.9, 0.8], [0,0.50,0], textSize=2)
                             time.sleep(0.25)
@@ -188,8 +197,9 @@ class GrasppingScenarios():
                         if save_name is not None:
                             os.rename(save_name + '.png', save_name + f'_SUCCESS_grasp{i}.png') 
 
+                        break
+
                     else:
-                        number_of_failures += 1
                         idx +=1                            
                 
                         if vis:
@@ -197,173 +207,172 @@ class GrasppingScenarios():
                             time.sleep(0.25)
                             p.removeUserDebugItem(debugID)
 
-        data.write_json(self.network_model)
-        summarize(data.save_dir, "isolated", runs, attempts, self.network_model, n_objects, method, confidence_threshold)
+        # data.write_json(self.network_model)
+        # summarize(data.save_dir, "isolated", runs, attempts, self.network_model, n_objects, method, confidence_threshold)
+        return data
 
 
-    def packed_or_pile_scenario(self,runs, scenario, device, vis, output, debug):
-        
+    def packed_or_pile_scenario(self, runs, scenario, attempts_grasp, attempts_clear, n_objects, method, confidence_threshold, device, vis, output, debug):
+
         ## reporting the results at the end of experiments in the results folder
-        number_of_objects = 5
-        if scenario=='packed':
-            #objects = YcbObjects('objects/ycb_objects',
-                            #mod_orn=['ChipsCan', 'MustardBottle', 'TomatoSoupCan'],
-                            #mod_stiffness=['Strawberry'],
-                            #exclude=['CrackerBox'])
-            objects = YcbObjects('objects/ycb_objects')
-            
-            data = PackPileData(number_of_objects, runs, 'results', 'packed')
+        objects = YcbObjects('objects/ycb_objects')    
 
-        elif scenario=='pile':
-            #objects = YcbObjects('objects/ycb_objects',
-                            #mod_orn=['ChipsCan', 'MustardBottle', 'TomatoSoupCan'],
-                            #mod_stiffness=['Strawberry'],
-                            #exclude=['CrackerBox'])
-            objects = YcbObjects('objects/ycb_objects')
-
-            data = PackPileData(number_of_objects, runs, 'results', 'pile')
-
+        data = PackPileData(objects.obj_names, n_objects, runs, 'results', scenario)
 
         center_x, center_y, center_z = 0.05, -0.52, self.CAM_Z
-        camera = Camera((center_x, center_y, center_z), (center_x, center_y, 0.785), 0.2, 2.0, (500, 500), 40)
+        
+        camera = Camera((center_x, center_y, center_z), (center_x, center_y, 0.785), 0.2, 2.0, (mask_rcnn_size, mask_rcnn_size), 40)
         env = Environment(camera, vis=vis, debug=debug, finger_length=0.06)
         
         generator = GraspGenerator(self.network_path, camera, self.depth_radius, self.fig, self.IMG_SIZE, self.network_model, device)
 
-        
-        for i in range(runs):
-            env.remove_all_obj()
-            env.reset_robot()              
-            print("----------- run ", i+1, " -----------")
+        for i in range(runs): # number of times everything is repeated        
+            
+            print("----------- run ", i + 1, " -----------")
             print ("network model = ", self.network_model)
             print ("size of input image (W, H) = (", self.IMG_SIZE," ," ,self.IMG_SIZE, ")")
-
+            print("number of clears allowed: ", attempts_clear)
+            print("number of grasp attents: ", attempts_grasp)
+            print("number of objects per scenario: ", n_objects)
+            print("method: ", method)
+            print("confidence threshold: {:.2f}".format(confidence_threshold))
             
             if vis:
                 debugID = p.addUserDebugText(f'Experiment {i+1}', [-0.0, -0.9, 0.8], [0,0,255], textSize=2)
                 time.sleep(0.5)
                 p.removeUserDebugItem(debugID)
 
-            number_of_failures = 0
             objects.shuffle_objects()
+            info = objects.get_n_first_obj_info(n_objects)
 
-            info = objects.get_n_first_obj_info(number_of_objects)
+            # creates one scenario per object to evaluate its accuracy
+            for obj_name in objects.obj_names:
+                print(" ")
+                print("# Scenario object: ", obj_name)
 
-            #numObjects == 5 ## number of objects put in the environment each run, default should be 5
-            if scenario=='packed':
-                env.create_packed(5, info)
-            elif scenario=='pile':
-                env.create_pile(5, info)
+                env.remove_all_obj()
+                env.reset_robot() 
                 
-            #self.dummy_simulation_steps(50)
+                if scenario == "pile":
+                    objects_ids = env.create_pile(n_objects, info)
+                elif scenario == "packed":
+                    objects_ids = env.create_packed(n_objects, info)
+                else:
+                    print('Quantum bit error')
+                    exit()
 
-            number_of_failures = 0
-            ATTEMPTS = 4
-            number_of_attempts = ATTEMPTS
-            failed_grasp_counter = 0
-            flag_failed_grasp_counter= False
+                objects_dict = dict(zip(objects_ids, objects.obj_names))
 
-            while self.is_there_any_object(camera) and number_of_failures < number_of_attempts:                
-                #env.move_arm_away()
-                try: 
-                    idx = 0 ## select the best grasp configuration
-                    for i in range(number_of_attempts):
-                        data.add_try()  
-                        rgb, depth, _ = camera.get_cam_img()
-                        rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
-                        ## resize depth image
-                        depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation = cv2.INTER_AREA)
+                number_of_grasp_failures = 0
+                number_of_target_failures = 0
+                number_of_objects_cleared = 0
+                idx = 0
+            
+                while self.is_there_any_object(camera) and (number_of_grasp_failures <= attempts_grasp) and (number_of_objects_cleared <= attempts_clear):   
+                    print(" ")
+                    
+                    # 1. Recognize the object with Mask-RCNN
+                    data.add_try_recog(obj_name)
 
-                        desiredObject = "mustard_bottle"
-                        maskingMethod = "boundingBox"
-                        grasps, save_name, objectFound = generator.predict_grasp(rgb, self.IMG_SIZE, depth, number_of_attempts, output, desiredObject, maskingMethod)
-                      
-                        if (grasps == []):
-                                self.dummy_simulation_steps(30)
-                                print ("could not find a grasp point!")    
-                                if failed_grasp_counter > 5:
-                                    print("Failed to find a grasp points > 3 times. Skipping.")
-                                    flag_failed_grasp_counter= True
-                                    break
+                    rgb, depth, _ = camera.get_cam_img()
+                    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
 
-                                failed_grasp_counter += 1 
-                                continue
+                    ## resize depth image
+                    depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation=cv2.INTER_AREA)
+
+                    grasps, save_name, objectFound, objectScore = generator.predict_grasp(rgb, self.IMG_SIZE, depth, attempts_grasp, output, 
+                                                                            obj_name, method, confidence_threshold)
+
+                    if objectFound: 
+                        discrimination = True
+                        if objectFound > 1:
+                            for ii in range(1, objectFound - 1):
+                                if (objectScore[0] - objectScore[ii]) <= 0.01: 
+                                    discrimination = False # no distinction between desired detected objects
                         
-                        if vis:
-                            LID =[]
-                            for g in grasps:
-                                LID = self.draw_predicted_grasp(g,color=[1,0,1],lineIDs=LID)
-                            time.sleep(0.5)
-                            self.remove_drawing(LID)
-                            self.dummy_simulation_steps(10)
-                            
-                        #print ("grasps.length = ", len(grasps))
-                        if (idx > len(grasps)-1):  
-                            print ("idx = ", idx)
-                            if len(grasps) > 0 :
-                                idx = len(grasps)-1
-                            else:
-                                number_of_failures += 1
-                                continue  
-
-                        lineIDs = self.draw_predicted_grasp(grasps[idx])
-                        
-                        ## perform object grasping and manipulation : 
-                        #### succes_grasp means if the grasp was successful, 
-                        #### succes_target means if the target object placed in the target basket successfully
-                        x, y, z, yaw, opening_len, obj_height = grasps[idx]
-                        succes_grasp, succes_target = env.grasp((x, y, z), yaw, opening_len, obj_height)
-                        
-                        if succes_grasp:
-                            data.add_succes_grasp()                     
-
-                        ## remove visualized grasp configuration 
-                        if vis:
-                            self.remove_drawing(lineIDs)
-
-                        env.reset_robot()
-                            
-                        if succes_target:
-                            data.add_succes_target()
-                            number_of_failures = 0
-
-                            if vis:
-                                debugID = p.addUserDebugText("success", [-0.0, -0.9, 0.8], [0,0.50,0], textSize=2)
-                                time.sleep(0.25)
-                                p.removeUserDebugItem(debugID)
-                                
-                            if save_name is not None:
-                                    os.rename(save_name + '.png', save_name + f'_SUCCESS_grasp{i}.png')
-                                
+                        if discrimination:
+                            print('Object found!')
+                            data.add_succes_recog(obj_name)
                         else:
-                            #env.reset_robot()   
-                            number_of_failures += 1
-                            idx +=1     
-                                                    
-                            if vis:
-                                debugID = p.addUserDebugText("failed", [-0.0, -0.9, 0.8], [0.5,0,0], textSize=2)
-                                time.sleep(0.25)
-                                p.removeUserDebugItem(debugID)
+                            print('Several objects with the same score of the {} class were found, skipping...'.format(obj_name))
+                            break
 
-                            if number_of_failures == number_of_attempts:
-                                if vis:
-                                    debugID = p.addUserDebugText("breaking point",  [-0.0, -0.9, 0.8], [0.5,0,0], textSize=2)
-                                    time.sleep(0.25)
-                                    p.removeUserDebugItem(debugID)
-                                
-                                break
+                    # 2. Remove either the chosen object or the best one
+                    if objectFound: data.add_try(obj_name) # it will try to grap the desired object
 
-                        #env.reset_all_obj()
-        
-                except:
-                    print("An exception occurred during the experiment!!!")
+                    if len(grasps) == 0:
+                        number_of_grasp_failures += 1 # grasp not found
+
+                        print('Grasp not found. Error: {}'.format(number_of_grasp_failures))
+                        continue # no objects can be grasped
+                    else:
+                        if (idx > len(grasps) - 1):  
+                            idx = len(grasps) - 1                     
+
+                    if vis:
+                        LID =[]
+                        for g in grasps:
+                            LID = self.draw_predicted_grasp(g, color=[1,0,1],lineIDs=LID)
+                        time.sleep(0.5)
+                        self.remove_drawing(LID)
+                        self.dummy_simulation_steps(10)
+                        
+                    lineIDs = self.draw_predicted_grasp(grasps[idx])
+                    
+                    ## perform object grasping and manipulation : 
+                    #### succes_grasp means if the grasp was successful, 
+                    #### succes_target means if the target object placed in the target basket successfully
+                    x, y, z, yaw, opening_len, obj_height = grasps[idx]
+                    succes_grasp, succes_target, grasped_obj_id = env.grasp((x, y, z), yaw, opening_len, obj_height)
+                    
+                    if succes_grasp: 
+                        if objectFound: 
+                            print('Object was grasped')
+                            data.add_succes_grasp(obj_name) 
+                        # env.remove_obj(grasped_obj_id)     
+                    else:
+                        number_of_grasp_failures += 1
+                        print('Error grasping the object. Number of errors: {}'.format(number_of_grasp_failures))
+
+                    ## remove visualized grasp configuration 
+                    if vis: 
+                        self.remove_drawing(lineIDs)
+
                     env.reset_robot()
-                    #print ("#objects = ", len(env.obj_ids), "#failed = ", number_of_failures , "#attempts =", number_of_attempts)
-        
-                if flag_failed_grasp_counter:
-                    flag_failed_grasp_counter= False
-                    break
-        data.summarize() 
+                        
+                    if succes_target:
+                        if objectFound: data.add_succes_target(obj_name)
+                        idx = 0 # restarts the optimal selection
+
+                        if vis:
+                            debugID = p.addUserDebugText("success", [-0.0, -0.9, 0.8], [0,0.50,0], textSize=2)
+                            time.sleep(0.25)
+                            p.removeUserDebugItem(debugID)
+                            
+                        if save_name is not None:
+                            os.rename(save_name + '.png', save_name + f'_SUCCESS_grasp{i}.png')
+                            
+                    else:
+                        number_of_target_failures += 1
+                        idx +=1  # it will try with the next config   
+                                                
+                        if vis:
+                            debugID = p.addUserDebugText("failed", [-0.0, -0.9, 0.8], [0.5,0,0], textSize=2)
+                            time.sleep(0.25)
+                            p.removeUserDebugItem(debugID)
+
+                    if not grasped_obj_id == None:
+                        removed_object = objects_dict[grasped_obj_id]
+                        print('Object: {} was removed'.format(removed_object))
+                        if removed_object == obj_name:
+                            if objectFound: data.add_succes_scenario(obj_name)
+
+                            break # the object being tested is no longer on the table
+                        else:
+                            number_of_objects_cleared += 1
+                            print('Number of objects cleared: ', number_of_objects_cleared)
+                            
+        return data
         
 def parse_args():
     parser = argparse.ArgumentParser(description='Grasping demo')
@@ -372,7 +381,8 @@ def parse_args():
     parser.add_argument('--network', type=str, default='GR_ConvNet', help='Network model (GR_ConvNet/...)')
 
     parser.add_argument('--runs', type=int, default=1, help='Number of runs the scenario is executed')
-    parser.add_argument('--attempts', type=int, default=3, help='Number of attempts in case grasping failed')
+    parser.add_argument('--attempts_clear', type=int, default=3, help='Number of objects that may be cleared before detecting the desired one')
+    parser.add_argument('--attempts_grasp', type=int, default=3, help='Number of attempts in case grasping failed')
 
     parser.add_argument('--save-network-output', dest='output', type=bool, default=False,
                         help='Save network output (True/False)')
@@ -384,30 +394,127 @@ def parse_args():
     parser.add_argument('--n_objects', type=int, default=-1, help='number of objects per scenario')
     parser.add_argument('--confidence_threshold', type=float, default=0.8, help='Labelled objects with a lower confidence value than this are disarded')
     parser.add_argument('--method', type=str, default='boundingBox', help='Method use to mask the q_img in MASK-RCNN (boundingBox, objectMask)')
+
+    parser.add_argument('--flag_test', type=int, default=0, help='If true, then the parameters introduced are ignored and the model is tested')
+    parser.add_argument('--out_path', type=str, default='results/', help='Output path for the summaries')
                         
     args = parser.parse_args()
     return args
 
+
+
 if __name__ == '__main__':
 
     args = parse_args()
+
     output = args.output
     runs = args.runs
-    ATTEMPTS = args.attempts
+    attempts_clear = args.attempts_clear
+    attempts_grasp = args.attempts_grasp
     device = args.device
     vis = args.vis
     report = args.report
     n_objects = args.n_objects
     method = args.method
     confidence_threshold = args.confidence_threshold
+    flag_test = args.flag_test
+
+    out_path = args.out_path
 
     grasp = GrasppingScenarios(args.network)
 
-    if args.scenario == 'isolated':
-        if n_objects <= 0: n_objects = 1
-        grasp.isolated_obj_scenario(runs, ATTEMPTS, n_objects, method, confidence_threshold, device, vis, output=output, debug=False)
-    elif args.scenario == 'packed':
-        grasp.packed_or_pile_scenario(runs, args.scenario, device, vis, output=output, debug=False)
-    elif args.scenario == 'pile':
-        grasp.packed_or_pile_scenario(runs, args.scenario, device, vis, output=output, debug=False)
+    const_runs = 1
 
+    if flag_test:
+        if False:
+            scenarios = []; runs = []; methods = []; n_objects = []; thresholds = []; attempts_grasps = []; out_results = []
+            
+            # conf_methods = ['boundingBox', 'objectMask']; conf_objects = [1]; conf_threshold = [0.7, 0.8, 0.9]; attempts = [1, 2, 3]
+            conf_methods = ['boundingBox']; conf_objects = [1]; conf_threshold = [0.7]; conf_attempts = [1]
+            for method in conf_methods:
+                for n_obj in conf_objects:
+                    for thres in conf_threshold:
+                        for n_atemp in conf_attempts:
+
+                            scenarios.append('isolated')
+                            runs.append(const_runs)
+                            methods.append(method)
+                            n_objects.append(n_obj)
+                            thresholds.append(thres)
+                            attempts_grasps.append(n_atemp)
+
+                            results = grasp.isolated_obj_scenario(const_runs, n_atemp, method, thres, device, vis, output=output, debug=False)
+
+                            result_dict = results.to_dict()
+                            out_results.append(result_dict)
+
+            out_dict = {
+                'scenarios': scenarios,
+                'runs': runs,
+                'methods': methods,
+                'n_objects': n_objects,
+                'thresholds': thresholds,
+                'attempts_grasps': attempts_grasps,
+                'out_results': out_results
+            }
+
+            out_file = out_path + "results_isolated.json"
+            with open(out_file, "w") as outfile:
+                json.dump(out_dict, outfile)
+                outfile.close()
+                print(" Results stored in : ", out_file)
+
+        if True:
+            scenarios = []; runs = []; methods = []; n_objects = []; thresholds = []; attempts_grasps = []; attempts_clears = []; out_results = []
+            
+            # conf_scenarios = ['packed', 'pile']; conf_methods = ['boundingBox', 'objectMask']; conf_objects = [2, 3, 4, 55]; conf_threshold = [0.7, 0.8, 0.9]; conf_attempt_grasps = [1, 2, 3]; conf_attempt_clears = [0, 1, 2]
+            conf_scenarios = ['pile']; conf_methods = ['boundingBox']; conf_objects = [5]; conf_threshold = [0.7]; conf_attempt_grasps = [0]; conf_attempt_clears = [0]
+            for scenario in conf_scenarios:
+                for method in conf_methods:
+                    for n_obj in conf_objects:
+                        for thres in conf_threshold:
+                            for attemp_grasp in conf_attempt_grasps:
+                                for attemp_clear in conf_attempt_clears:
+
+                                    scenarios.append(scenario)
+                                    runs.append(const_runs)
+                                    methods.append(method)
+                                    n_objects.append(n_obj)
+                                    thresholds.append(thres)
+                                    attempts_grasps.append(attemp_grasp)
+                                    attempts_clears.append(attemp_clear)
+
+                                    results = grasp.packed_or_pile_scenario(const_runs, scenario, attemp_grasp, attemp_clear, n_obj, method, thres, 
+                                                        device, vis, output=output, debug=False)
+
+                                    result_dict = results.to_dict()
+                                    out_results.append(result_dict)
+
+            out_dict = {
+                'scenarios': scenarios,
+                'runs': runs,
+                'methods': methods,
+                'n_objects': n_objects,
+                'thresholds': thresholds,
+                'attempts_grasps': attempts_grasps,
+                'attempts_clears': attempts_clears,
+                'out_results': out_results
+            }
+
+            out_file = out_path + "results_packed_pile.json"
+            with open(out_file, "w") as outfile:
+                json.dump(out_dict, outfile)
+                outfile.close()
+                print(" Results stored in : ", out_file)
+
+    else:
+        if args.scenario == 'isolated':
+            results = grasp.isolated_obj_scenario(runs, attempts_grasp, method, confidence_threshold, device, vis, output=output, debug=False)
+
+        elif args.scenario == 'packed' or args.scenario == 'pile':
+            if n_objects <= 0: n_objects = 5
+            results = grasp.packed_or_pile_scenario(runs, args.scenario, attempts_grasp, attempts_clear, n_objects, method, confidence_threshold, 
+                                                    device, vis, output=output, debug=False)
+        else:
+            print('Scenario: {} not valid'.format(args.scenario))
+            exit()

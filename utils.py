@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from matplotlib.patches import FancyBboxPatch
+import numpy as np
 
 
 class YcbObjects:
@@ -13,6 +14,7 @@ class YcbObjects:
         self.load_path = load_path
         self.mod_orn = mod_orn
         self.mod_stiffness = mod_stiffness
+
         with open(load_path + '/obj_list.txt') as f:
             lines = f.readlines()
             self.obj_names = [line.rstrip('\n') for line in lines]
@@ -48,7 +50,7 @@ class YcbObjects:
 
 class PackPileData:
 
-    def __init__(self, num_obj, trials, save_path, scenario):
+    def __init__(self, obj_names, num_obj, trials, save_path, scenario):
         self.num_obj = num_obj
         self.trials = trials
         self.save_path = save_path
@@ -59,40 +61,77 @@ class PackPileData:
         self.save_dir = f'{save_path}/{now}_{scenario}'
         os.mkdir(self.save_dir)
 
-        self.tries = 0
-        self.succes_grasp = 0
-        self.succes_target = 0
+        self.succes_target = dict.fromkeys(obj_names, 0)
+        self.succes_grasp = dict.fromkeys(obj_names, 0)
+        self.succes_recog = dict.fromkeys(obj_names, 0)
+        self.succes_scenario = dict.fromkeys(obj_names, 0)
+        self.tries = dict.fromkeys(obj_names, 0)
+        self.tries_recog = dict.fromkeys(obj_names, 0)
 
-    def add_try(self):
-        self.tries += 1
+    def to_dict(self):
+        my_dict = {
+            'num_obj': self.num_obj,
+            'trials': self.trials,
+            'succes_target': self.succes_target,
+            'succes_grasp': self.succes_grasp,
+            'succes_recog': self.succes_recog,
+            'succes_scenario': self.succes_scenario,
+            "tries": self.tries,
+            "tries_recog": self.tries_recog   
+        }
 
-    def add_succes_target(self):
-        self.succes_target += 1
+        return my_dict
 
-    def add_succes_grasp(self):
-        self.succes_grasp += 1
+    def add_succes_target(self, obj_name):
+        self.succes_target[obj_name] += 1
 
-    def summarize(self):
-        grasp_acc = self.succes_grasp / self.tries
-        target_acc = self.succes_target / self.tries
-        perc_obj_cleared = self.succes_target / (self.trials * self.num_obj)
+    def add_succes_grasp(self, obj_name):
+        self.succes_grasp[obj_name] += 1
+
+    def add_succes_recog(self, obj_name):
+        self.succes_recog[obj_name] += 1
+
+    def add_succes_scenario(self, obj_name):
+        self.succes_scenario[obj_name] += 1
+
+    def add_try(self, obj_name):
+        self.tries[obj_name] += 1
+
+    def add_try_recog(self, obj_name):
+        self.tries_recog[obj_name] += 1
+
+    def summarize(self, case, trials, n_attempts, n_objects, method, confidence_threshold):
+        if self.tries > 0:
+            grasp_acc = self.succes_grasp / self.tries
+            target_acc = self.succes_target / self.tries
+        else:
+            grasp_acc = -1; target_acc = -1
+        recog_acc = self.succes_recog / self.tries_recog
+
+  
+        # perc_obj_cleared = self.succes_target / (self.trials * self.num_obj). In this case the objective is not to remove all the objects, but
+        # to only remove the object that the user decides
 
         with open(f'{self.save_dir}/summary.txt', 'w') as f:
-            f.write(
-                f'Stats for {self.num_obj} objects out of {self.trials} trials\n')
-            f.write(
-                f'Manipulation success rate = {target_acc:.3f} ({self.succes_target}/{self.tries})\n')
-            f.write(
-                f'Grasp success rate = {grasp_acc:.3f} ({self.succes_grasp}/{self.tries})\n')
-            f.write(
-                f'Percentage of objects removed from the workspace = {perc_obj_cleared} ({self.succes_target}/{(self.trials * self.num_obj)})\n')
 
-       
+            f.write('#### Configuration: \n')
+            f.write('- case: {} \n'.format(case))
+            f.write('- n_runs: {} \n'.format(trials))
+            f.write('- n_attempts: {} \n'.format(n_attempts))
+            f.write('- n_objects: {} \n'.format(n_objects))
+            f.write('- method: {} \n'.format(method))
+            f.write('- confidence_threshold: {:.2f} \n'.format(confidence_threshold))
+
+            f.write('#### Results: \n')
+
+            f.write("Stats for {} objects out of {} trials \n".format(self.num_obj, self.trials))
+            f.write("Manipulation success rate = {:.3f} \n".format(target_acc))
+            f.write("Grasp success rate = {:.3f} \n".format(grasp_acc))
+            f.write("Recog success rate = {:.3f} \n".format(recog_acc))
 
         # plot the obtained results
-        import numpy as np
-        results = [grasp_acc, target_acc, perc_obj_cleared]
-        metrics = ['grasp', 'manipulation', '% removed from WS']
+        results = [grasp_acc, target_acc, recog_acc]
+        metrics = ['grasp', 'manipulation', 'recognition']
 
         x_pos = np.arange(len(metrics))
         
@@ -197,6 +236,19 @@ class IsolatedObjData:
         now = datetime.now().strftime('%Y-%m-%d %H-%M-%S')
         self.save_dir = f'{save_path}/{now}_iso_obj'
         os.mkdir(self.save_dir)
+
+    def to_dict(self):
+        my_dict = {
+            'obj_names': self.obj_names,
+            'trials': self.trials,
+            'succes_target': self.succes_target,
+            'succes_grasp': self.succes_grasp,
+            'succes_recog': self.succes_recog,
+            "tries": self.tries,
+            "tries_recog": self.tries_recog   
+        }
+
+        return my_dict
 
     def add_succes_target(self, obj_name):
         self.succes_target[obj_name] += 1
