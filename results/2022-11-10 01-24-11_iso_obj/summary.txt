@@ -1,0 +1,9 @@
+Total:
+Grasp acc=1.000 (2/2) --- Manipulation acc=1.000 (2/2)                     --- Recog acc=0.400 (2/5)  
+
+Accuracy per object:
+PottedMeatCan: Grasp acc = 1.000 --- Manipulation acc = 1.000 --- Recog acc = 1.000 
+CrackerBox: Grasp acc = 0.000 --- Manipulation acc = 0.000 --- Recog acc = 0.000 
+GelatinBox: Grasp acc = 0.000 --- Manipulation acc = 0.000 --- Recog acc = 0.000 
+TomatoSoupCan: Grasp acc = 1.000 --- Manipulation acc = 1.000 --- Recog acc = 1.000 
+MustardBottle: Grasp acc = 0.000 --- Manipulation acc = 0.000 --- Recog acc = 0.000 

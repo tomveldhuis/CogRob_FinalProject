@@ -217,6 +217,9 @@ class IsolatedObjData:
         data_tries = json.dumps(self.tries)
         data_target = json.dumps(self.succes_target)
         data_grasp = json.dumps(self.succes_grasp)
+        data_tries_recog = json.dumps(self.tries_recog)
+        data_recog = json.dumps(self.succes_recog)
+
         f = open(self.save_dir+'/'+modelname+'_data_tries.json', 'w')
         f.write(data_tries)
         f.close()
@@ -225,6 +228,12 @@ class IsolatedObjData:
         f.close()
         f = open(self.save_dir+'/'+modelname+'_data_grasp.json', 'w')
         f.write(data_grasp)
+        f.close()
+        f = open(self.save_dir+'/'+modelname+'_data_tries_recog.json', 'w')
+        f.write(data_tries_recog)
+        f.close()
+        f = open(self.save_dir+'/'+modelname+'_data_recog.json', 'w')
+        f.write(data_recog)
         f.close()
 
 def plot(path, tries, target, grasp, trials):
@@ -264,40 +273,79 @@ def plot(path, tries, target, grasp, trials):
     plt.savefig(path+'/plot.png')
 
 
-def write_summary(path, tries, target, grasp):
+def write_summary(path, inf, tries, tries_recog, target, grasp, recog):
     with open(path+'/summary.txt', 'w') as f:
         total_tries = sum(tries.values())
+        total_tries_recog = sum(tries_recog.values())
         total_target = sum(target.values())
         total_grasp = sum(grasp.values())
+        total_recog = sum(recog.values())
+
+        f.write('#### Configuration: \n')
+        f.write('- case: {} \n'.format(inf["case"]))
+        f.write('- n_runs: {} \n'.format(inf["trials"]))
+        f.write('- n_attempts: {} \n'.format(inf["n_attempts"]))
+        f.write('- n_objects: {} \n'.format(inf["n_objects"]))
+        f.write('- method: {} \n'.format(inf["method"]))
+        f.write('- confidence_threshold: {:.2f} \n'.format(inf["confidence_threshold"]))
+
+        f.write('#### Results: \n')
         f.write('Total:\n')
+
+        if total_tries > 0:
+            grasp_acc = total_grasp / total_tries
+            man_acc =  total_target / total_tries
+        else:
+            grasp_acc = -1; man_acc = -1
+        recog_acc = total_recog / total_tries_recog
+
         f.write(
-            f'Grasp acc={total_grasp/total_tries:.3f} ({total_grasp}/{total_tries}) --- Manipulation acc={total_target/total_tries:.3f} ({total_target}/{total_tries}) \n')
+            "Grasp acc = {:.3f} --- Manipulation acc = {:.3f} --- Recog acc = {:.3f} \n".format(grasp_acc, man_acc, recog_acc)
+            )
         f.write('\n')
         f.write("Accuracy per object:\n")
         for obj in tries.keys():
             n_tries = tries[obj]
+            n_tries_recog = tries_recog[obj]
             n_t = target[obj]
             n_g = grasp[obj]
-            f.write(
-                f'{obj}: Grasp acc={n_g/n_tries:.3f} ({n_g}/{n_tries}) --- Manipulation acc={n_t/n_tries:.3f} ({n_t}/{n_tries}) \n')
+            n_r = recog[obj]
+
+            if n_tries > 0:
+                grasp_acc = n_g / n_tries
+                man_acc = n_t / n_tries
+            else:
+                grasp_acc = -1.0; man_acc = -1.0 
+
+            if n_tries_recog > 0:
+                recog_acc = n_r / n_tries_recog
+            else:
+                recog_acc = -1.0
 
 
-def summarize(path, trials,modelname):
-    # with open(path+'/data_tries.json') as data:
-    #     tries = json.load(data)
-    # with open(path+'/data_target.json') as data:
-    #     target = json.load(data)
-    # with open(path+'/data_grasp.json') as data:
-    #     grasp = json.load(data)
+
+            f.write("{}: Grasp acc = {:.3f} --- Manipulation acc = {:.3f} --- Recog acc = {:.3f} \n".format(obj, grasp_acc, man_acc, recog_acc))
+
+
+def summarize(path, case, trials, n_attempts, modelname, n_objects, method, confidence_threshold):
     with open(path+'/'+modelname+'_data_tries.json') as data:
         tries = json.load(data)
+    with open(path+'/'+modelname+'_data_tries_recog.json') as data:
+        tries_recog = json.load(data)
     with open(path+'/'+modelname+'_data_target.json') as data:
         target = json.load(data)
     with open(path+'/'+modelname+'_data_grasp.json') as data:
         grasp = json.load(data)
+    with open(path+'/'+modelname+'_data_recog.json') as data:
+        recog = json.load(data)
+
 
     plot(path, tries, target, grasp, trials)
-    write_summary(path, tries, target, grasp)
+
+    inf = dict(zip(["case", "trials", "n_attempts", "n_objects", "method", "confidence_threshold"], 
+                    [case, trials, n_attempts, n_objects, method, confidence_threshold]))
+
+    write_summary(path, inf, tries, tries_recog, target, grasp, recog)
 
 
 def plot_specific_model(path, tries, target, grasp, trials, modelname):

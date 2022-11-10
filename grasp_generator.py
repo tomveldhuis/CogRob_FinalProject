@@ -181,7 +181,7 @@ class GraspGenerator:
         """MASK R CNN IS DOING STUFF HERE"""
         # give maskRCNN the object we want, the rgb image, the size of that image, the q_img from 
         # the grasping network, as well as tell it if we want to save the output of mask-r-cnn as an image.
-        objectFound, q_img = self.mrcnn.predict(desired_object, maskingMethod, maskRCNN_rgb, q_img, img_ratio=500.0/img_size,
+        objectFound, q_img = self.mrcnn.predict(desired_object, maskingMethod, maskRCNN_rgb, q_img, img_size, img_ratio=500.0/img_size,
             conf_threshold=predict_threshold, show_output=show_output)
 
         save_name = None

@@ -1,0 +1,9 @@
+#### Configuration: 
+- case: isolated 
+- n_runs: 1 
+- n_attempts: 3 
+- n_objects: 1 
+- method: objectMask 
+- confidence_threshold: 0.70 
+#### Results: 
+Total:

@@ -13,6 +13,8 @@ from torchvision.transforms import transforms as transforms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+from skimage.transform import resize
+
 
 # default objects list to use by the model
 ycb = [
@@ -180,11 +182,13 @@ class MRCNN():
 
 
 
-    def predict(self, desired_object, method, rgb, q_img, img_ratio=1.0, conf_threshold=0.8, show_output=True):
-        print('Predict - MASK-RCNN')     
+    def predict(self, desired_object, method, rgb, q_img, img_size, img_ratio=1.0, conf_threshold=0.8, show_output=True):
+        print('Predict - Mask-RCNN')     
         objectBox, objectMask = self.segmentImage(rgb, desired_object, conf_threshold, save_output_image=show_output) 
 
         object_found = False
+
+        np.set_printoptions(threshold=np.inf)
 
         ## resize the object box
         if len(objectBox) > 0:
@@ -192,7 +196,7 @@ class MRCNN():
 
             if method == 'boundingBox':
                 # unpack box edges
-                print("MASKING Q-IMAGE")
+                print("Masking Q-IMAGE by bounding box")
                 left_bound, top_bound = objectBox[0][0] # TODO FILTER THE FOUND OBJECTS IN CASE THERE ARE MORE THAN 1
                 right_bound, bottom_bound = objectBox[0][1]
 
@@ -207,8 +211,11 @@ class MRCNN():
                 q_img[:,             right_bound:] = 0   # right of the box
 
             elif method == 'objectMask':
-                print("object mask outline not implemented yet")
-        else:
-            print("object not found!")
-        
+                print("Masking Q-IMAGE BY INSTANCE SEGMENTATION")
+                objectMask = resize(objectMask[0], (img_size, img_size))
+                q_img = q_img * objectMask   # element-wise multiplication
+            else:
+                print('Method not supported')
+                exit()
+
         return object_found, q_img

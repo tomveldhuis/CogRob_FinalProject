@@ -81,7 +81,7 @@ class GrasppingScenarios():
             return True
                     
                     
-    def isolated_obj_scenario(self, runs, attempts, device, vis, output, debug):
+    def isolated_obj_scenario(self, runs, attempts, n_objects, method, confidence_threshold, device, vis, output, debug):
 
         objects = YcbObjects('objects/ycb_objects')
         
@@ -103,6 +103,9 @@ class GrasppingScenarios():
             print("----------- run ", i + 1, " -----------")
             print ("network model = ", self.network_model)
             print ("size of input image (W, H) = (", self.IMG_SIZE," ," ,self.IMG_SIZE, ")")
+            print("number of objects per scenario: ", n_objects)
+            print("method: ", method)
+            print("confidence threshold: {:.2f}".format(confidence_threshold))
 
             for obj_name in objects.obj_names:
                 print("Scenario object: ", obj_name)
@@ -112,15 +115,12 @@ class GrasppingScenarios():
                
                 path, mod_orn, mod_stiffness = objects.get_obj_info(obj_name)
 
-                print(mod_orn, mod_stiffness)
-
                 env.load_isolated_obj(path, mod_orn, mod_stiffness)
                 self.dummy_simulation_steps(20)
 
                 number_of_attempts = attempts
                 number_of_failures = 0
                 idx = 0 ## select the best grasp configuration
-                failed_grasp_counter = 0
 
                 while self.is_there_any_object(camera) and number_of_failures < number_of_attempts:     
                     
@@ -132,34 +132,26 @@ class GrasppingScenarios():
 
                     ## resize depth image
                     depth = cv2.resize(depth, (self.IMG_SIZE, self.IMG_SIZE), interpolation = cv2.INTER_AREA)
-                              
-                    desiredObject = obj_name; maskingMethod = "boundingBox"; predicThreshold = 0.8
 
                     grasps, save_name, objectFound = generator.predict_grasp(rgb, self.IMG_SIZE, depth, number_of_attempts, output, 
-                        desiredObject, maskingMethod, predicThreshold)
+                        obj_name, method, confidence_threshold)
 
                     data.add_try_recog(obj_name)
                     if objectFound: data.add_succes_recog(obj_name)
-                    
-                    if (len(grasps) == 0):
-                        self.dummy_simulation_steps(50)
+                    else:
+                        # if object is not found, don't even try
+                        self.dummy_simulation_steps(20)
+                        print(' Skipping object... \r\n')
+                        break
 
-                        print("Failed to find grasp + 1")
-                        if failed_grasp_counter > number_of_attempts:
-                            print("Failed to find a grasp points > {} times. Skipping.".format(number_of_attempts))
-                            break
-                            
-                        failed_grasp_counter += 1                 
+                    # first tries with the best config, if it fails tries the next one
+                    if len(grasps) == 0:
+                        print('Grasp not found')
+                        number_of_failures += 1 # grasp not found
                         continue
-
-                    if (idx > len(grasps) - 1):  
-                        print ("idx = ", idx)
-                        if len(grasps) > 0 :
-                           idx = len(grasps) - 1
-                        else:
-                           number_of_failures += 1
-                           print("+1 failure")
-                           continue    
+                    else:
+                        if (idx > len(grasps) - 1):  
+                            idx = len(grasps) - 1   
 
                     if vis:
                         LID =[]
@@ -194,8 +186,7 @@ class GrasppingScenarios():
                             p.removeUserDebugItem(debugID)
                         
                         if save_name is not None:
-                            os.rename(save_name + '.png', save_name + f'_SUCCESS_grasp{i}.png')
-                        
+                            os.rename(save_name + '.png', save_name + f'_SUCCESS_grasp{i}.png') 
 
                     else:
                         number_of_failures += 1
@@ -207,7 +198,7 @@ class GrasppingScenarios():
                             p.removeUserDebugItem(debugID)
 
         data.write_json(self.network_model)
-        summarize(data.save_dir, runs, self.network_model)
+        summarize(data.save_dir, "isolated", runs, attempts, self.network_model, n_objects, method, confidence_threshold)
 
 
     def packed_or_pile_scenario(self,runs, scenario, device, vis, output, debug):
@@ -391,9 +382,8 @@ def parse_args():
     parser.add_argument('--report', type=bool, default=True, help='report (True/False)')
 
     parser.add_argument('--n_objects', type=int, default=-1, help='number of objects per scenario')
-    parser.add_argument('--n_scenarios_per_object', type=int, default=1, help='number of random scenearios generated per object')
-
-
+    parser.add_argument('--confidence_threshold', type=float, default=0.8, help='Labelled objects with a lower confidence value than this are disarded')
+    parser.add_argument('--method', type=str, default='boundingBox', help='Method use to mask the q_img in MASK-RCNN (boundingBox, objectMask)')
                         
     args = parser.parse_args()
     return args
@@ -404,14 +394,18 @@ if __name__ == '__main__':
     output = args.output
     runs = args.runs
     ATTEMPTS = args.attempts
-    device=args.device
-    vis=args.vis
-    report=args.report
-    
+    device = args.device
+    vis = args.vis
+    report = args.report
+    n_objects = args.n_objects
+    method = args.method
+    confidence_threshold = args.confidence_threshold
+
     grasp = GrasppingScenarios(args.network)
 
     if args.scenario == 'isolated':
-        grasp.isolated_obj_scenario(runs, ATTEMPTS, device, vis, output=output, debug=False)
+        if n_objects <= 0: n_objects = 1
+        grasp.isolated_obj_scenario(runs, ATTEMPTS, n_objects, method, confidence_threshold, device, vis, output=output, debug=False)
     elif args.scenario == 'packed':
         grasp.packed_or_pile_scenario(runs, args.scenario, device, vis, output=output, debug=False)
     elif args.scenario == 'pile':
